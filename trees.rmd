@@ -1,0 +1,146 @@
+---
+title: "BSAN750 K Means Project Component"
+author: 'Name:Gregory Attard'
+date: "Due: 2022-12-13"
+output:
+  word_document:
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(rpart)
+library(rpart.plot)
+library(dplyr)
+library(ROCR)
+```
+
+```{r}
+admin4=read.csv("admin4.csv")
+admin4=admin4[,-1]
+```
+
+Making subsets for the 3 categories of outcome.
+```{r}
+DISCHARGE <- subset(admin4, OUTCOME=="DISCHARGE")
+EXPIRY <- subset(admin4, OUTCOME=="EXPIRY")
+DAMA <- subset(admin4, OUTCOME=="DAMA")
+
+table(admin4$OUTCOME)
+```
+
+Industry practice to remove DAMA (discharges against medical advice).
+```{r}
+noDAMA=rbind(DISCHARGE,EXPIRY)
+View(noDAMA)
+```
+
+Creating binary tree.
+```{r}
+tree <- rpart(OUTCOME~., data=noDAMA, method = "class")
+
+rpart.plot(tree)
+```
+
+Plot a complexity parameter table for an rpart fit.
+```{r}
+plotcp(tree, minline = TRUE, lty = 3, col = 1)
+```
+
+Pruned to 5: cp=0.019
+```{r}
+prunedtree19=prune(tree, cp=0.019)
+rpart.plot(prunedtree19)
+```
+
+Pruned to 7: cp=0.015
+```{r}
+prunedtree15=prune(tree, cp=0.015)
+rpart.plot(prunedtree15)
+```
+
+Tree AUC (not pruned)
+```{r}
+pred <- prediction(predict(tree, type = "prob")[, 2], noDAMA$OUTCOME)
+plot(performance(pred, "tpr", "fpr"))
+abline(0, 1, lty = 2)
+
+aucTree <- performance(pred, measure = "auc")
+aucTree = aucTree@y.values[[1]]
+aucTree
+```
+
+Pruned tree AUC (cp = 0.015)
+```{r}
+pred <- prediction(predict(prunedtree15, type = "prob")[, 2], noDAMA$OUTCOME)
+plot(performance(pred, "tpr", "fpr"))
+abline(0, 1, lty = 2)
+
+aucTree <- performance(pred, measure = "auc")
+aucTree = aucTree@y.values[[1]]
+aucTree
+```
+
+
+Multiple tree evaluations (no pruning)
+```{r}
+predsave=NULL
+for(i in 1:10){
+index.half<- sample(1:nrow(noDAMA), 0.5*nrow(noDAMA))
+half1<- noDAMA[index.half,]
+half2<- noDAMA[-index.half,]
+
+half1tree <- rpart(OUTCOME~., data=half1, method = "class")
+half1pred <- prediction(predict(half1tree, type = "prob")[, 2], half1$OUTCOME)
+
+half2tree <- rpart(OUTCOME~., data=half2, method = "class")
+half2pred <- prediction(predict(half2tree, type = "prob")[, 2], half2$OUTCOME)
+
+aucHolder1 <- performance(half1pred, measure = "auc")
+aucHolder1 = aucHolder1@y.values[[1]]
+
+aucHolder2 <- performance(half2pred, measure = "auc")
+aucHolder2 = aucHolder2@y.values[[1]]
+
+predsave = rbind(predsave,aucHolder1,aucHolder2)
+}
+
+mean(predsave)
+```
+
+Multiple tree evaluations (with pruning)
+```{r}
+predsave=NULL
+for(i in 1:10){
+index.half<- sample(1:nrow(noDAMA), 0.5*nrow(noDAMA))
+half1<- noDAMA[index.half,]
+half2<- noDAMA[-index.half,]
+
+half1tree <- rpart(OUTCOME~., data=half1, method = "class")
+half1pruned=prune(half1tree, cp=0.015)
+half1pred <- prediction(predict(half1pruned, type = "prob")[, 2], half1$OUTCOME)
+
+half2tree <- rpart(OUTCOME~., data=half2, method = "class")
+half2pruned=prune(half2tree, cp=0.015)
+half2pred <- prediction(predict(half2pruned, type = "prob")[, 2], half2$OUTCOME)
+
+aucHolder1 <- performance(half1pred, measure = "auc")
+aucHolder1 = aucHolder1@y.values[[1]]
+
+aucHolder2 <- performance(half2pred, measure = "auc")
+aucHolder2 = aucHolder2@y.values[[1]]
+
+predsave = rbind(predsave,aucHolder1,aucHolder2)
+}
+
+mean(predsave)
+```
+
+Histogram of Age
+```{r}
+hist(admin4$AGE)
+```
+
